@@ -1,13 +1,14 @@
-import { db } from '@/db';
+import { db } from '../db';
 import {
   campaigns,
   leads,
   campaignLeads,
   validationLogs,
-} from '@/db/schema';
+} from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { whatsappConnector } from './whatsapp-connector.service';
-import type { Campaign, NewLead } from '@/db/schema';
+import { leadDiscovery } from './lead-discovery.service';
+import type { Campaign, NewLead } from '../db/schema';
 
 interface LeadCandidate {
   businessName: string;
@@ -41,7 +42,7 @@ class CampaignService {
       updatedAt: new Date(),
     };
 
-    if (status === 'SEARCHING' || status === 'VALIDATING') {
+    if (status === 'DISCOVERING' || status === 'VERIFYING') {
       updates.startedAt = new Date();
     }
 
@@ -243,13 +244,13 @@ class CampaignService {
       return;
     }
 
-    if (campaign.status !== 'QUEUED' && campaign.status !== 'SEARCHING' && campaign.status !== 'VALIDATING') {
+    if (campaign.status !== 'QUEUED' && campaign.status !== 'DISCOVERING' && campaign.status !== 'VALIDATING') {
       console.log('Campaign already finished:', campaign.status);
       return;
     }
 
     // Update to SEARCHING
-    await this.updateCampaignStatus(campaignId, 'SEARCHING');
+    await this.updateCampaignStatus(campaignId, 'DISCOVERING');
 
     // Simulate lead discovery (placeholder)
     // In production, this would call actual lead sources
@@ -284,7 +285,7 @@ class CampaignService {
       }
 
       // Update to VALIDATING
-      await this.updateCampaignStatus(campaignId, 'VALIDATING');
+      await this.updateCampaignStatus(campaignId, 'VERIFYING');
 
       // Create or find lead
       const leadId = await this.createOrFindLead(candidate);
@@ -329,22 +330,20 @@ class CampaignService {
   }
 
   /**
-   * Discover candidates (placeholder implementation)
-   * In production, this would integrate with actual lead sources
+   * Discover candidates using enabled APIs
    */
   private async discoverCandidates(campaign: Campaign): Promise<LeadCandidate[]> {
-    // This is a mock implementation
-    // In production, implement actual lead discovery logic
-    // e.g., Google Places API, data brokers, etc.
-
     console.log(`Discovering candidates for: ${campaign.keyword} in ${campaign.region}`);
 
-    // Simulate finding candidates
-    // In production, replace with actual API calls
+    // Use lead discovery service to get candidates from enabled APIs
+    const candidates = await leadDiscovery.discoverLeads(
+      campaign.keyword,
+      campaign.region,
+      campaign.targetLeads * 2 // Get more candidates than target in case some fail validation
+    );
 
-    // For demo, return empty array (worker will mark as FAILED)
-    // This allows the system to be tested end-to-end
-    return [];
+    console.log(`Found ${candidates.length} candidates`);
+    return candidates;
   }
 }
 

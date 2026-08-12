@@ -1,5 +1,5 @@
-import { db } from '@/db';
-import { connectors, validationLogs } from '@/db/schema';
+import { db } from '../db';
+import { connectors, validationLogs } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 interface ValidationResult {
@@ -16,13 +16,16 @@ interface EvolutionApiConfig {
 
 class WhatsAppConnectorService {
   private config: EvolutionApiConfig;
+  private connectorUrl: string;
 
   constructor() {
     this.config = {
       url: process.env.EVOLUTION_API_URL || '',
       apiKey: process.env.EVOLUTION_API_KEY || '',
-      instanceName: 'customerai-default',
+      instanceName: process.env.INSTANCE_NAME || 'customerai',
     };
+    // Use the local connector API which proxies to Evolution API
+    this.connectorUrl = process.env.WHATSAPP_CONNECTOR_URL || 'http://localhost:8083';
   }
 
   /**
@@ -39,17 +42,19 @@ class WhatsAppConnectorService {
 
   /**
    * Check WhatsApp number validation
-   * Uses Evolution API's checkNumber endpoint
+   * Uses the WhatsApp connector API which proxies to Evolution API
    */
   async validatePhone(
     phoneNumber: string,
     campaignId?: string,
     leadId?: string
   ): Promise<ValidationResult> {
-    // If not configured, return placeholder result
+    const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+
+    // If not configured, return error instead of mock data
     if (!this.isConfigured()) {
       console.log(
-        'Evolution API not configured, returning mock validation result'
+        'Evolution API not configured, cannot validate phone number'
       );
 
       // Log the attempt
@@ -57,61 +62,36 @@ class WhatsAppConnectorService {
         await db.insert(validationLogs).values({
           campaignId,
           leadId,
-          phone: phoneNumber,
-          result: 'VALID',
-          error: 'Mock validation (API not configured)',
+          phone: normalizedPhone,
+          result: 'ERROR',
+          error: 'Evolution API not configured',
           attempt: 1,
         });
       }
 
       return {
-        valid: true,
-        existsWhatsApp: true,
-        message: 'Mock validation - API not configured',
+        valid: false,
+        existsWhatsApp: false,
+        message: 'Validation service not configured',
       };
     }
 
-    const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
-
     try {
-      // Call Evolution API
+      // Call the local WhatsApp connector API which proxies to Evolution API
       const response = await fetch(
-        `${this.config.url}/chat/checkNumber/${normalizedPhone}`,
+        `${this.connectorUrl}/checkNumber/${normalizedPhone}`,
         {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            apikey: this.config.apiKey,
           },
         }
       );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-
-        // Log failed attempt
-        if (campaignId) {
-          await db.insert(validationLogs).values({
-            campaignId,
-            leadId,
-            phone: normalizedPhone,
-            result: 'ERROR',
-            error: `API error: ${response.status} - ${errorText}`,
-            attempt: 1,
-          });
-        }
-
-        return {
-          valid: false,
-          existsWhatsApp: false,
-          message: 'Validation service error',
-        };
-      }
-
       const data = await response.json();
 
-      // Evolution API response format varies, adapt as needed
-      const existsWhatsApp = data?.exists === true || data?.numberExists === true;
+      // The connector returns { exists: boolean } or similar
+      const existsWhatsApp = data?.exists === true || data?.numberExists === true || data?.valid === true;
 
       // Log successful check
       if (campaignId) {

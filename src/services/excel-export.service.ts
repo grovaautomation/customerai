@@ -1,8 +1,8 @@
 import ExcelJS from 'exceljs';
-import { db } from '@/db';
-import { campaignLeads, leads, campaigns } from '@/db/schema';
+import { db } from '../db';
+import { campaignLeads, leads, campaigns } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
-import type { Lead, Campaign } from '@/db/schema';
+import type { Lead, Campaign } from '../db/schema';
 
 interface ExportData {
   campaign: Campaign;

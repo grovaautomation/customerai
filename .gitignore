@@ -39,3 +39,23 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# WhatsApp/Evolution session files
+*.session
+*.json.bak
+auth-state/
+creds.json
+pre-key-*
+
+# logs
+*.log
+logs/
+
+# uploads and temp files
+uploads/
+tmp/
+temp/
+
+# IDE
+.vscode/
+.idea/
